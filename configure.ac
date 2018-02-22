@@ -39,6 +39,15 @@ gl_INIT
 AM_GNU_GETTEXT([external], [need-ngettext])
 AM_GNU_GETTEXT_VERSION([0.18.2])
 
+AC_ARG_ENABLE(iconv,
+    AC_HELP_STRING([--disable-iconv],
+                    [disable iconv support]),,
+    enable_iconv=yes)
+
+if test x$enable_iconv = xyes; then
+    AM_ICONV
+fi
+
 # Checks for header files.
 
 # Checks for types.

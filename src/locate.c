@@ -22,6 +22,10 @@ Author: Miloslav Trmac <mitr@redhat.com> */
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
+#if HAVE_ICONV
+#include <iconv.h>
+#include <langinfo.h>
+#endif
 #include <inttypes.h>
 #include <limits.h>
 #include <locale.h>
@@ -59,6 +63,9 @@ static struct string_list conf_dbpath; /* = { 0, }; */
 
 /* Ignore case when matching patterns */
 static bool conf_ignore_case; /* = false; */
+
+/* Ignore accents when matching patterns */
+static bool conf_transliterate; /* = false; */
 
 /* Return only files that match all patterns */
 static bool conf_match_all_patterns; /* = false; */
@@ -107,6 +114,11 @@ static bool conf_quiet; /* = false; */
 
 /* Output only statistics */
 static bool conf_statistics; /* = false; */
+
+#if HAVE_ICONV
+/* Iconv context for transliterate conversion */
+static iconv_t iconv_context; /* = NULL; */
+#endif
 
  /* String utilities */
 
@@ -162,6 +174,34 @@ uppercase_string (struct obstack *obstack, const char *src)
     *p = towupper (*p);
   return res;
 }
+
+#if HAVE_ICONV
+static char *
+transliterate_string (const char *str)
+{
+  size_t len;
+  size_t retlen;
+  size_t outlen;
+  char *inbuf;
+  char *outptr;
+  char outbuf[PATH_MAX * 2];
+
+  inbuf = (char *) str;
+  outptr = outbuf;
+  len = strlen (str);
+
+  outlen = sizeof (outbuf) - 1;
+  retlen = iconv (iconv_context, &inbuf, &len, &outptr, &outlen);
+
+  if (retlen == (size_t) -1)
+    {
+      error (0, errno, _("Impossible to transliterate string %s"), str);
+      return NULL;
+    }
+
+  return strndup (outbuf, sizeof (outbuf) - 1 - outlen);
+}
+#endif
 
 /* Write STRING to stdout, replace unprintable characters with '?' */
 static void
@@ -418,6 +458,7 @@ static int
 handle_path (const char *path, int *visible)
 {
   const char *s, *matching;
+  char *transliterated = NULL;
 
   /* Statistics */
   if (conf_statistics != false)
@@ -431,8 +472,17 @@ handle_path (const char *path, int *visible)
     matching = s + 1;
   else
     matching = path;
+#if HAVE_ICONV
+  if (conf_transliterate != false)
+    {
+      transliterated = transliterate_string (matching);
+      matching = transliterated;
+    }
+#endif
   if (!string_matches_pattern (matching))
     goto done;
+  free(transliterated);
+  transliterated = NULL;
   /* Visible? */
   if (*visible == -1)
     *visible = check_directory_perms (path) == 0;
@@ -458,6 +508,7 @@ handle_path (const char *path, int *visible)
   if (conf_output_limit_set != false && matches_found == conf_output_limit)
     return -1;
  done:
+  free(transliterated);
   return 0;
 }
 
@@ -632,6 +683,10 @@ help (void)
 	    "  -h, --help             print this help\n"
 	    "  -i, --ignore-case      ignore case distinctions when matching "
 	    "patterns\n"
+#if HAVE_ICONV
+	    "  -t, --transliterate    ignore accents using iconv "
+	    "transliteration when matching patterns\n"
+#endif
 	    "  -l, --limit, -n LIMIT  limit output (or counting) to LIMIT "
 	    "entries\n"
 	    "  -m, --mmap             ignored, for backward compatibility\n"
@@ -669,6 +724,7 @@ parse_options (int argc, char *argv[])
       { "follow", no_argument, NULL, 'L' },
       { "help", no_argument, NULL, 'h' },
       { "ignore-case", no_argument, NULL, 'i' },
+      { "transliterate", no_argument, NULL, 't' },
       { "limit", required_argument, NULL, 'l' },
       { "mmap", no_argument, NULL, 'm' },
       { "quiet", no_argument, NULL, 'q' },
@@ -691,7 +747,7 @@ parse_options (int argc, char *argv[])
     {
       int opt, idx;
 
-      opt = getopt_long (argc, argv, "0AHPLSVbcd:ehil:mn:qr:sw", options, &idx);
+      opt = getopt_long (argc, argv, "0AHPLSVbcd:ehitl:mn:qr:sw", options, &idx);
       switch (opt)
 	{
 	case -1:
@@ -772,6 +828,10 @@ parse_options (int argc, char *argv[])
 	  conf_ignore_case = true;
 	  break;
 
+	case 't':
+	  conf_transliterate = true;
+	  break;
+
 	case 'l': case 'n':
 	  {
 	    char *end;
@@ -822,6 +882,19 @@ parse_options (int argc, char *argv[])
     error (EXIT_FAILURE, 0,
 	   _("non-option arguments are not allowed with --%s"),
 	   conf_statistics != false ? "statistics" : "regexp");
+  if (conf_transliterate != false)
+    {
+#if HAVE_ICONV
+      iconv_context = iconv_open ("ASCII//TRANSLIT", nl_langinfo (CODESET));
+      if (iconv_context == (iconv_t) -1)
+	  error (EXIT_FAILURE, errno, _("can not do transliteration between " \
+					"these locales: `%s' and `ASCII'"),
+					nl_langinfo (CODESET));
+#else
+      error (EXIT_FAILURE, errno, _("transliteration support is not supported" \
+				    "by this build of %s"), program_name);
+#endif
+    }
 }
 
 /* Parse arguments in ARGC, ARGV.  Exit on error. */
@@ -836,6 +909,13 @@ parse_arguments (int argc, char *argv[])
     error (EXIT_FAILURE, 0, _("no pattern to search for specified"));
   conf_patterns.entries = xnrealloc (conf_patterns.entries, conf_patterns.len,
 				     sizeof (*conf_patterns.entries));
+#if HAVE_ICONV
+  if (conf_transliterate != false)
+    {
+      for (i = 0; i < conf_patterns.len; i++)
+	conf_patterns.entries[i] = transliterate_string (conf_patterns.entries[i]);
+    }
+#endif
   if (conf_match_regexp != false)
     {
       int cflags;
@@ -1042,6 +1122,10 @@ main (int argc, char *argv[])
       handle_dbpath_entry (conf_dbpath.entries[i]);
     }
  done:
+#if HAVE_ICONV
+  if (conf_transliterate != false && iconv_context)
+    iconv_close (iconv_context);
+#endif
   if (conf_output_count != false)
     printf ("%ju\n", matches_found);
   if (conf_statistics != false || matches_found != 0)
