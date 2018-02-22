@@ -126,6 +126,10 @@ and exit successfully.
 Ignore case distinctions when matching patterns.
 
 .TP
+\fB\-t\fR, \fB\-\-transliterate\fR
+Ignore accents using iconv transliteration when matching patterns.
+
+.TP
 \fB\-l\fR, \fB\-\-limit\fR, \fB\-n\fR \fILIMIT\fR
 Exit successfully after finding
 .I LIMIT
@@ -267,4 +271,5 @@ but it is added to other databases in this implementation and \fBslocate\fR.
 Miloslav Trmac <mitr@redhat.com>
 
 .SH SEE ALSO
-.BR updatedb (8)
+.BR updatedb (8),
+.BR iconv (1),
