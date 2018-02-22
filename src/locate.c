@@ -199,6 +199,9 @@ transliterate_string (const char *str)
       return NULL;
     }
 
+  if (retlen == 0)
+    return NULL;
+
   return strndup (outbuf, sizeof (outbuf) - 1 - outlen);
 }
 #endif
@@ -458,7 +461,6 @@ static int
 handle_path (const char *path, int *visible)
 {
   const char *s, *matching;
-  char *transliterated = NULL;
 
   /* Statistics */
   if (conf_statistics != false)
@@ -472,17 +474,29 @@ handle_path (const char *path, int *visible)
     matching = s + 1;
   else
     matching = path;
-#if HAVE_ICONV
-  if (conf_transliterate != false)
+  if (!string_matches_pattern (matching))
+#if !HAVE_ICONV
+    goto done;
+#else
     {
-      transliterated = transliterate_string (matching);
-      matching = transliterated;
+      bool matched;
+
+      matched = false;
+      if (conf_transliterate != false)
+	{
+	  char *transliterated;
+
+	  transliterated = transliterate_string (matching);
+	  if (transliterated)
+	    {
+	      matched = string_matches_pattern (transliterated);
+	      free (transliterated);
+	    }
+	}
+      if (!matched)
+	goto done;
     }
 #endif
-  if (!string_matches_pattern (matching))
-    goto done;
-  free(transliterated);
-  transliterated = NULL;
   /* Visible? */
   if (*visible == -1)
     *visible = check_directory_perms (path) == 0;
@@ -508,7 +522,6 @@ handle_path (const char *path, int *visible)
   if (conf_output_limit_set != false && matches_found == conf_output_limit)
     return -1;
  done:
-  free(transliterated);
   return 0;
 }
 
@@ -907,15 +920,23 @@ parse_arguments (int argc, char *argv[])
     string_list_append (&conf_patterns, argv[i]);
   if (conf_statistics == false && conf_patterns.len == 0)
     error (EXIT_FAILURE, 0, _("no pattern to search for specified"));
-  conf_patterns.entries = xnrealloc (conf_patterns.entries, conf_patterns.len,
-				     sizeof (*conf_patterns.entries));
 #if HAVE_ICONV
   if (conf_transliterate != false)
     {
-      for (i = 0; i < conf_patterns.len; i++)
-	conf_patterns.entries[i] = transliterate_string (conf_patterns.entries[i]);
+      size_t patterns_len = conf_patterns.len;
+      char *transliterated;
+
+      for (i = 0; i < patterns_len; i++)
+	{
+	  transliterated = transliterate_string (conf_patterns.entries[i]);
+
+	  if (transliterated)
+	    string_list_append (&conf_patterns, transliterated);
+	}
     }
 #endif
+  conf_patterns.entries = xnrealloc (conf_patterns.entries, conf_patterns.len,
+				     sizeof (*conf_patterns.entries));
   if (conf_match_regexp != false)
     {
       int cflags;
