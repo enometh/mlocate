@@ -180,8 +180,10 @@ static char *
 transliterate_string (const char *str)
 {
   size_t len;
-  size_t retlen;
+  size_t conversions;
   size_t outlen;
+  size_t transliterated_len;
+  size_t i;
   char *inbuf;
   char *outptr;
   char outbuf[PATH_MAX * 2];
@@ -191,18 +193,27 @@ transliterate_string (const char *str)
   len = strlen (str);
 
   outlen = sizeof (outbuf) - 1;
-  retlen = iconv (iconv_context, &inbuf, &len, &outptr, &outlen);
+  conversions = iconv (iconv_context, &inbuf, &len, &outptr, &outlen);
+  transliterated_len = sizeof (outbuf) - 1 - outlen;
 
-  if (retlen == (size_t) -1)
+  if (conversions == (size_t) -1)
     {
       error (0, errno, _("Impossible to transliterate string %s"), str);
       return NULL;
     }
 
-  if (retlen == 0)
-    return NULL;
+  if (transliterated_len == conversions)
+    {
+      bool found_valid = false;
 
-  return strndup (outbuf, sizeof (outbuf) - 1 - outlen);
+      for (i = 0; i < transliterated_len && !found_valid; ++i)
+	found_valid = outbuf[i] != '?';
+
+      if (!found_valid)
+	return NULL;
+    }
+
+  return strndup (outbuf, transliterated_len);
 }
 #endif
 
