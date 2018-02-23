@@ -183,18 +183,32 @@ transliterate_string (const char *str)
   size_t inlen;
   size_t outleft;
   size_t transliteratedlen;
+  size_t i;
   bool changed;
+  bool needsconversion;
   char outbuf[PATH_MAX * 2];
   char *inbuf;
   char *outptr;
 
+  needsconversion = false;
   changed = false;
   inbuf = (char *) str;
   inlen = 1;
   outptr = outbuf;
-  strrlen = strlen (str);
+  strrlen = 0;
   outleft = sizeof (outbuf) - 1;
   transliteratedlen = 0;
+
+  for (i = 0; str[i]; i++)
+    {
+      if (str[i] & 0x80)
+	needsconversion = true;
+
+      ++strrlen;
+    }
+
+  if (needsconversion != true)
+    return NULL;
 
   while (inbuf < str + strrlen)
     {
