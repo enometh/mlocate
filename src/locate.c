@@ -51,6 +51,9 @@ Author: Miloslav Trmac <mitr@redhat.com> */
 #include "db.h"
 #include "lib.h"
 
+#define BASIC_REGEX_META_CHARS ".^$*[]\\-"
+#define EXTENDED_REGEX_META_CHARS BASIC_REGEX_META_CHARS "{}|+?()"
+
 /* Check file existence before reporting them */
 static bool conf_check_existence; /* = false; */
 
@@ -176,6 +179,69 @@ uppercase_string (struct obstack *obstack, const char *src)
 }
 
 #if HAVE_ICONV
+static bool
+char_needs_escape (const char c)
+{
+   if (conf_match_regexp_basic != false &&
+       strchr (BASIC_REGEX_META_CHARS, c) != NULL)
+     return true;
+
+   if (conf_match_regexp_basic != true &&
+       strchr (EXTENDED_REGEX_META_CHARS, c) != NULL)
+     return true;
+
+   return false;
+}
+
+static char *
+escape_regex (const char *str, size_t len, size_t *escaped_len)
+{
+  size_t i, j;
+  size_t newlen;
+  bool foundmeta;
+  char *outbuf;
+
+  if (escaped_len)
+	*escaped_len = 0;
+
+  if (conf_match_regexp != true)
+	return NULL;
+
+  foundmeta = false;
+  newlen = 0;
+
+  for (i = 0; str[i] && i < len; ++i)
+    {
+      if (char_needs_escape (str[i]))
+	{
+	  foundmeta = true;
+	  ++newlen;
+	}
+      ++newlen;
+    }
+
+  if (foundmeta != true || newlen == 0)
+    return NULL;
+
+  outbuf = xmalloc (newlen + 1);
+  outbuf[newlen] = '\0';
+
+  for (i = 0, j = 0; i < len && j < newlen; ++i)
+    {
+      if (char_needs_escape (str[i]))
+	outbuf[j++] = '\\';
+      outbuf[j++] = str[i];
+    }
+
+  if (escaped_len)
+    *escaped_len = newlen;
+
+  return outbuf;
+}
+
+/* Use iconv to transliterate the string into ASCII chars, when possible.
+   If a transliteration does not exist, we just use the actual symbol
+   not to loose precision. */
 static char *
 transliterate_string (const char *str)
 {
@@ -253,6 +319,32 @@ transliterate_string (const char *str)
 	}
       else if (conversions > 0)
 	{
+	  if (conf_match_regexp != false && convertedlen > 0)
+	    {
+	      char *converted;
+	      char *escaped;
+	      size_t escaped_len;
+
+	      converted = outptr - convertedlen;
+	      escaped = escape_regex (converted, convertedlen, &escaped_len);
+
+	      if (escaped)
+	        {
+		  if (escaped_len > outleft)
+		    {
+		      outleft += (escaped_len - outleft);
+		      outbuf = xrealloc (outbuf, outidx + outleft);
+		      outptr = outbuf + outidx;
+		      converted = outptr - convertedlen;
+		    }
+		  memcpy (converted, escaped, escaped_len);
+		  free (escaped);
+
+		  outptr += (escaped_len - convertedlen);
+		  outleft -= (escaped_len - convertedlen);
+		  convertedlen = escaped_len;
+	        }
+	    }
 	  changed = true;
 	}
       transliteratedlen += convertedlen;
