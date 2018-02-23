@@ -179,41 +179,63 @@ uppercase_string (struct obstack *obstack, const char *src)
 static char *
 transliterate_string (const char *str)
 {
-  size_t len;
-  size_t conversions;
-  size_t outlen;
-  size_t transliterated_len;
-  size_t i;
+  size_t strrlen;
+  size_t inlen;
+  size_t outleft;
+  size_t transliteratedlen;
+  bool changed;
+  char outbuf[PATH_MAX * 2];
   char *inbuf;
   char *outptr;
-  char outbuf[PATH_MAX * 2];
 
+  changed = false;
   inbuf = (char *) str;
+  inlen = 1;
   outptr = outbuf;
-  len = strlen (str);
+  strrlen = strlen (str);
+  outleft = sizeof (outbuf) - 1;
+  transliteratedlen = 0;
 
-  outlen = sizeof (outbuf) - 1;
-  conversions = iconv (iconv_context, &inbuf, &len, &outptr, &outlen);
-  transliterated_len = sizeof (outbuf) - 1 - outlen;
-
-  if (conversions == (size_t) -1)
+  while (inbuf < str + strrlen)
     {
-      error (0, errno, _("Impossible to transliterate string %s"), str);
-      return NULL;
+      size_t convertedlen;
+      size_t conversions;
+      size_t symbollen;
+
+      symbollen = inlen;
+      conversions = iconv (iconv_context, &inbuf, &inlen, &outptr, &outleft);
+      convertedlen = (outptr - outbuf) - transliteratedlen;
+
+      if (conversions == (size_t) -1)
+	{
+	  if (errno == EILSEQ || errno == EINVAL)
+	    {
+	      inlen += 1;
+	      continue;
+	    }
+
+	  error (0, errno, _("Impossible to transliterate string %s"), str);
+	  return NULL;
+	}
+      else if (conversions == 1 && convertedlen == 1 && outptr[-1] == '?')
+	{
+	  /* Transliteration is not possible for this symbol, so we just
+	     reuse it as it is. */
+	  memcpy (outptr - 1, inbuf - symbollen, symbollen);
+	  convertedlen = symbollen;
+	  outptr += symbollen - 1;
+	  outleft -= symbollen - 1;
+	}
+      else if (conversions > 0)
+	changed = true;
+      transliteratedlen += convertedlen;
+      inlen = 1;
     }
 
-  if (transliterated_len == conversions)
-    {
-      bool found_valid = false;
+  if (changed != true)
+    return NULL;
 
-      for (i = 0; i < transliterated_len && !found_valid; ++i)
-	found_valid = outbuf[i] != '?';
-
-      if (!found_valid)
-	return NULL;
-    }
-
-  return strndup (outbuf, transliterated_len);
+  return strndup (outbuf, transliteratedlen);
 }
 #endif
 
