@@ -197,7 +197,7 @@ transliterate_string (const char *str)
   for (i = 0; str[i]; i++)
     {
       if (str[i] & 0x80)
-      	++nonasciibytes;
+	++nonasciibytes;
 
       ++strrlen;
     }
@@ -208,7 +208,7 @@ transliterate_string (const char *str)
   inbuf = (char *) str;
   inlen = 1;
   transliteratedlen = 0;
-  outleft = strrlen + (nonasciibytes * 5);
+  outleft = strrlen + nonasciibytes;
   outbuf = xmalloc (outleft);
   outptr = outbuf;
 
@@ -217,16 +217,25 @@ transliterate_string (const char *str)
       size_t convertedlen;
       size_t conversions;
       size_t symbollen;
+      size_t outidx;
 
       symbollen = inlen;
       conversions = iconv (iconv_context, &inbuf, &inlen, &outptr, &outleft);
-      convertedlen = (outptr - outbuf) - transliteratedlen;
+      outidx = outptr - outbuf;
+      convertedlen = outidx - transliteratedlen;
 
       if (conversions == (size_t) -1)
 	{
 	  if (errno == EILSEQ || errno == EINVAL)
 	    {
 	      inlen += 1;
+	      continue;
+	    }
+	  else if (errno == E2BIG)
+	    {
+	      outleft += 5;
+	      outbuf = xrealloc (outbuf, outidx + outleft);
+	      outptr = outbuf + outidx;
 	      continue;
 	    }
 	  error (0, errno, _("Impossible to transliterate string %s"), str);
