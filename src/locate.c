@@ -183,32 +183,34 @@ transliterate_string (const char *str)
   size_t inlen;
   size_t outleft;
   size_t transliteratedlen;
+  size_t nonasciibytes;
   size_t i;
   bool changed;
-  bool needsconversion;
-  char outbuf[PATH_MAX * 2];
   char *inbuf;
+  char *outbuf;
   char *outptr;
 
-  needsconversion = false;
   changed = false;
-  inbuf = (char *) str;
-  inlen = 1;
-  outptr = outbuf;
+  nonasciibytes = 0;
   strrlen = 0;
-  outleft = sizeof (outbuf) - 1;
-  transliteratedlen = 0;
 
   for (i = 0; str[i]; i++)
     {
       if (str[i] & 0x80)
-	needsconversion = true;
+      	++nonasciibytes;
 
       ++strrlen;
     }
 
-  if (needsconversion != true)
+  if (nonasciibytes < 1)
     return NULL;
+
+  inbuf = (char *) str;
+  inlen = 1;
+  transliteratedlen = 0;
+  outleft = strrlen + (nonasciibytes * 5);
+  outbuf = xmalloc (outleft);
+  outptr = outbuf;
 
   while (inbuf + inlen <= str + strrlen)
     {
@@ -227,9 +229,9 @@ transliterate_string (const char *str)
 	      inlen += 1;
 	      continue;
 	    }
-
 	  error (0, errno, _("Impossible to transliterate string %s"), str);
-	  return NULL;
+	  changed = false;
+	  break;
 	}
       else if (conversions == 1 && convertedlen == 1 && outptr[-1] == '?')
 	{
@@ -241,15 +243,21 @@ transliterate_string (const char *str)
 	  outleft -= symbollen - 1;
 	}
       else if (conversions > 0)
-	changed = true;
+	{
+	  changed = true;
+	}
       transliteratedlen += convertedlen;
       inlen = 1;
     }
 
   if (changed != true)
-    return NULL;
+    {
+      free (outbuf);
+      return NULL;
+    }
 
-  return strndup (outbuf, transliteratedlen);
+  outbuf[transliteratedlen] = '\0';
+  return outbuf;
 }
 #endif
 
