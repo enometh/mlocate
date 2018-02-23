@@ -210,7 +210,7 @@ transliterate_string (const char *str)
   if (needsconversion != true)
     return NULL;
 
-  while (inbuf < str + strrlen)
+  while (inbuf + inlen <= str + strrlen)
     {
       size_t convertedlen;
       size_t conversions;
