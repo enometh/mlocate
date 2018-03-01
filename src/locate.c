@@ -329,7 +329,7 @@ transliterate_string (const char *str)
 	      escaped = escape_regex (converted, convertedlen, &escaped_len);
 
 	      if (escaped)
-	        {
+		{
 		  if (escaped_len > outleft)
 		    {
 		      outleft += (escaped_len - outleft);
@@ -343,7 +343,7 @@ transliterate_string (const char *str)
 		  outptr += (escaped_len - convertedlen);
 		  outleft -= (escaped_len - convertedlen);
 		  convertedlen = escaped_len;
-	        }
+		}
 	    }
 	  changed = true;
 	}
@@ -854,7 +854,8 @@ help (void)
 	    "patterns\n"
 #if HAVE_ICONV
 	    "  -t, --transliterate    ignore accents using iconv "
-	    "transliteration when matching patterns\n"
+	    "transliteration when\n"
+	    "                         matching patterns\n"
 #endif
 	    "  -l, --limit, -n LIMIT  limit output (or counting) to LIMIT "
 	    "entries\n"

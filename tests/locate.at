@@ -233,6 +233,8 @@ Search for entries in a mlocate database.
                          existence (default)
   -h, --help             print this help
   -i, --ignore-case      ignore case distinctions when matching patterns
+  -t, --transliterate    ignore accents using iconv transliteration when
+                         matching patterns
   -l, --limit, -n LIMIT  limit output (or counting) to LIMIT entries
   -m, --mmap             ignored, for backward compatibility
   -P, --nofollow, -H     don't follow trailing symbolic links when checking file
