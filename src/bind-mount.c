@@ -287,28 +287,35 @@ static int
 cmp_mount_entry_pointers (const void *xa, const void *xb)
 {
   void *const *a, *const *b;
+  int cmp_major;
 
   a = xa;
   b = xb;
-  return cmp_ints (((struct mount *)*a)->id, ((struct mount *)*b)->id);
-}
 
-static int
-cmp_id_mount_entry (const void *xa, const void *xb)
-{
-  const int *a;
-  void *const *b;
-
-  a = xa;
-  b = xb;
-  return cmp_ints (*a, ((struct mount *)*b)->id);
+  cmp_major = cmp_ints(((struct mount *)*a)->dev_major,
+		       ((struct mount *)*b)->dev_major);
+  if (!cmp_major) {
+    int cmp_minor = cmp_ints(((struct mount *)*a)->dev_minor,
+			     ((struct mount *)*b)->dev_minor);
+    if (!cmp_minor) {
+      int cmp_id = cmp_ints(((struct mount *)*a)->id,
+			    ((struct mount *)*b)->id);
+      if (!cmp_id)
+	return strcmp(((struct mount *)*a)->root,
+		      ((struct mount *)*b)->root);
+      else
+	return cmp_id;
+    } else
+      return cmp_minor;
+  } else
+    return cmp_major;
 }
 
 /* Rebuild bind_mount_paths */
 static void
 rebuild_bind_mount_paths (void)
 {
-  size_t i;
+  size_t i, j;
 
   if (conf_debug_pruning != false)
     /* This is debuging output, don't mark anything for translation */
@@ -321,46 +328,40 @@ rebuild_bind_mount_paths (void)
   obstack_free (&bind_mount_paths_obstack, bind_mount_paths_mark);
   bind_mount_paths_mark = obstack_alloc (&bind_mount_paths_obstack, 0);
   bind_mount_paths.len = 0;
-  /* Sort by ID to allow quick lookup */
+  /* Sort by major/minor/id/root */
   qsort (mount_entries, num_mount_entries, sizeof (*mount_entries),
 	 cmp_mount_entry_pointers);
-  for (i = 0; i < num_mount_entries; i++)
+  for (i = 0; i < num_mount_entries; i = j)
     {
-      struct mount *me, *parent;
-      void **pp;
+      struct mount *me, *next;
 
       me = mount_entries[i];
-      pp = bsearch (&me->parent_id, mount_entries, num_mount_entries,
-		    sizeof (*mount_entries), cmp_id_mount_entry);
-      if (pp == NULL)
-	continue;
-      parent = *pp;
-      if (me->dev_major == parent->dev_major
-	  && me->dev_minor == parent->dev_minor
-	  && strcmp (me->fs_type, parent->fs_type) == 0
-	  && strcmp (me->source, parent->source) == 0)
-	{
+      for (j = i+1; j < num_mount_entries; j++) {
+	  next = mount_entries[j];
+	  if (! (me->dev_major == next->dev_major
+		 && me->dev_minor == next->dev_minor))
+	    break;
 	  /* We have two mounts from the same device.  Is it a no-op bind
 	     mount? */
 	  size_t p_mount_len, p_root_len;
 
-	  p_mount_len = strlen (parent->mount_point);
-	  p_root_len = strlen (parent->root);
-	  /* parent->mount_point should always be a prefix of me->mount_point,
+	  p_mount_len = strlen (me->mount_point);
+	  p_root_len = strlen (me->root);
+	  /* me->mount_point should always be a prefix of next->mount_point,
 	     don't take any chances. */
-	  if (strncmp (me->mount_point, parent->mount_point, p_mount_len) != 0
-	      || strncmp (me->root, parent->root, p_root_len) != 0
-	      || strcmp (me->mount_point + p_mount_len,
-			 me->root + p_root_len) != 0)
+	  if (strncmp (next->mount_point, me->mount_point, p_mount_len) != 0
+	      || strncmp (next->root, me->root, p_root_len) != 0
+	      || strcmp (next->mount_point + p_mount_len,
+			 next->root + p_root_len) != 0)
 	    {
 	      char *copy;
 
 	      if (conf_debug_pruning != false)
 		/* This is debuging output, don't mark anything for
 		   translation */
-		fprintf (stderr, " => adding `%s'\n", me->mount_point);
-	      copy = obstack_copy (&bind_mount_paths_obstack, me->mount_point,
-				   strlen (me->mount_point) + 1);
+		fprintf (stderr, " => adding `%s'\n", next->mount_point);
+	      copy = obstack_copy (&bind_mount_paths_obstack, next->mount_point,
+				   strlen (next->mount_point) + 1);
 	      string_list_append (&bind_mount_paths, copy);
 	    }
 	}
