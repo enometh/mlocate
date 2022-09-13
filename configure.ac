@@ -33,6 +33,10 @@ AC_PROG_RANLIB
 # This interface seems to be undocumented, but bison uses it ;-)
 AM_MISSING_PROG([AUTOM4TE], [autom4te])
 
+AC_DEFUN([gt_TYPE_WINT_T],
+  [GNULIBHEADERS_OVERRIDE_WINT_T=0
+   AC_SUBST([GNULIBHEADERS_OVERRIDE_WINT_T])])
+
 gl_INIT
 
 # Checks for libraries.
