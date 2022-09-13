@@ -568,8 +568,8 @@ copy_old_dir (struct directory *dest)
       {
 	verify (offsetof (struct entry, name) <= OBSTACK_SIZE_MAX);
       }
-      obstack_blank (&scan_dir_state.data_obstack,
-		     offsetof (struct entry, name));
+      obstack_blank_fast (&scan_dir_state.data_obstack,
+			  offsetof (struct entry, name));
       if (db_read_name (&old_db, &scan_dir_state.data_obstack) != 0)
 	goto err_obstack;
       obstack_1grow (&scan_dir_state.data_obstack, 0);

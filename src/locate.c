@@ -511,7 +511,7 @@ handle_directory (struct db *db, const struct db_header *hdr)
 		   db->filename);
 	  goto err;
 	}
-      obstack_blank (&path_obstack, -(ssize_t)size);
+      obstack_blank_fast (&path_obstack, -(ssize_t)size);
     }
   p = obstack_finish (&path_obstack);
   obstack_free (&path_obstack, p);
